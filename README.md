@@ -1,0 +1,2 @@
+# StegLib
+C++ Steganography Library
