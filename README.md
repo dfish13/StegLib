@@ -1,2 +1,4 @@
-# StegLib
-C++ Steganography Library
+# Stegasaurus 2
+C++ Steganography Library and API
+
+Under Development
