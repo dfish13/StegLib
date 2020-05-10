@@ -1,7 +1,5 @@
 #include <stdint.h>
-
-
-
+#include <stdio.h>
 
 
 
@@ -11,7 +9,7 @@ public:
 	Gif(const char *fname);
 
 private:
-	gd_GIF *gif;
+	FILE *gif;
 };
 
 Gif::Gif() {
@@ -19,5 +17,5 @@ Gif::Gif() {
 }
 
 Gif::Gif(const char *fname) {
-	gif = gd_open_gif(fname);
+	gif = fopen(fname, "r");
 }

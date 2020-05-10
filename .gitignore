@@ -1,3 +1,5 @@
 *.o
 .DS_Store
-
+blossom5
+main
+src/__pycache__
