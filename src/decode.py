@@ -6,6 +6,7 @@ import os
 from blossom import blossom_perfect_matching
 from stega import *
 from main import greedy_tsp_3d
+import gif
 
 def lzw_compress(min_code_size, index_stream):
 	"""
@@ -106,7 +107,6 @@ def code_stream_to_bytes(min_code_size, code_stream):
 def code_stream_from_bytes(gif):
 	keys = []
 	key_size = int.from_bytes(gif.read(1), byteorder='big')
-	print(key_size)
 	clear = 1 << key_size
 	stop = clear + 1
 	key_size += 1
@@ -115,7 +115,6 @@ def code_stream_from_bytes(gif):
 
 	(key, sub_len, shift, byte) = get_key(gif, key_size, sub_len, shift, 0)
 	keys.append(key)
-	print(key)
 
 	next_code = stop
 	while 1:
@@ -131,6 +130,7 @@ def code_stream_from_bytes(gif):
 		if next_code == (1 << key_size) - 1 and key_size < 12:
 			key_size += 1
 		next_code += 1
+	gif.read(1)
 	return keys
 
 
@@ -152,29 +152,6 @@ def get_key(gif, key_size, sub_len, shift, byte):
 	return (key, sub_len, shift, byte)
 
 
-def discard_sub_blocks(gif):
-	block_size = int.from_bytes(gif.read(1), byteorder='big')
-	while block_size > 0:
-		gif.read(block_size)
-		block_size = int.from_bytes(gif.read(1), byteorder='big')
-
-def discard_extension(gif):
-	b = gif.read(1)
-	if b == bytes.fromhex('F9'):
-		print('graphics extension')
-		discard_sub_blocks(gif)
-	elif b == bytes.fromhex('01'):
-		print('plain text extension')
-		discard_sub_blocks(gif)
-	elif b == bytes.fromhex('FF'):
-		print('application extension')
-		discard_sub_blocks(gif)
-	elif b == bytes.fromhex('FE'):
-		print('comment extension')
-		discard_sub_blocks(gif)
-	else:
-		print('could not identify extension')
-
 def apply_permutation(perm, color_table, index_stream):
 	new_color_table = []
 	inv_perm = list.copy(perm)
@@ -191,56 +168,17 @@ if __name__ == "__main__":
 
 	fname = '../gifs/Dancing.gif'
 
-	with open(fname, 'rb') as gif:
-		b = gif.read(6)
-		print('header = {}'.format(b.decode('utf-8')))
-		b = gif.read(7)
-		canvas_width = int.from_bytes(b[:2], byteorder='little')
-		canvas_height = int.from_bytes(b[2:4], byteorder='little')
-		global_color_table_flag = (b[4] & 128) >> 7
-		color_resolution = (b[4] & 112) >> 4
-		sort_flag = (b[4] & 8) >> 3
-		global_color_table_size = 2**((b[4] & 7)+1)
-
-
-		print('width = {}, height = {}'.format(canvas_width, canvas_height))
-		print('global color table flag = {}'.format(global_color_table_flag))
-		print('color resolution = {}'.format(color_resolution))
-		print('sort flag = {}'.format(sort_flag))
-		print('size of global color table = {}'.format(global_color_table_size))
-
-		global_color_table = []
-		if global_color_table_flag:
-			for i in range(global_color_table_size):
-				b = gif.read(3)
-				global_color_table.append(tuple(b))
-
-		while 1:
-			b = gif.read(1)
-			if b == bytes.fromhex('21'):
-				print('discarding extension')
-				discard_extension(gif)
-			elif b == bytes.fromhex('2C'):
-				print('image descriptor block')
-				b = gif.read(8)
-				img_left = int.from_bytes(b[:2], byteorder='little')
-				img_top = int.from_bytes(b[2:4], byteorder='little')
-				img_width = int.from_bytes(b[4:6], byteorder='little')
-				img_height = int.from_bytes(b[6:], byteorder='little')
-				packed_byte = gif.read(1)
-				print(packed_byte)
-				keys = code_stream_from_bytes(gif)
-			if b == bytes.fromhex('3B'):
-				print('reached end of file')
-				break
+	mygif = gif.Gif()
+	mygif.read_from_file(fname)
 
 
 
-	index_stream = lzw_decompress(keys)
+	frame = mygif.get_frames()[0]
+	index_stream = frame.index_stream
 
-	reordering = list(np.random.permutation(global_color_table_size))
+	reordering = list(np.random.permutation(mygif.global_color_table_size))
 
-	new_color_table, new_index_stream = apply_permutation(reordering, global_color_table, index_stream)
+	new_color_table, new_index_stream = apply_permutation(reordering, mygif.global_color_table, index_stream)
 
 	available = len(new_index_stream)//8
 	print('number of free bytes available: {}'.format(available))
@@ -261,5 +199,5 @@ if __name__ == "__main__":
 		mygif2 += list(new_color_table[i])
 
 
-	plt.imshow(np.asarray(mygif2).reshape(img_height, img_width, 3))
+	plt.imshow(np.asarray(mygif2).reshape(frame.frame_height, frame.frame_width, 3))
 	plt.show()
