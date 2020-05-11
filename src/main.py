@@ -1,13 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from util import blossom_perfect_matching, color_distance
+from blossom import blossom_perfect_matching, color_distance
 
 def greedy_tsp_3d(gct):
 	x_gct = gct.copy()
 	color = x_gct[0]
 	x_gct.remove(color)
-	new_gct = [color]
+	perm = []
+	perm.append(gct.index(color))
 	while x_gct:
 		min_distance = None
 		for xcolor in x_gct:
@@ -15,11 +16,10 @@ def greedy_tsp_3d(gct):
 			if min_distance is None or d < min_distance:
 				min_distance = d
 				min_color = xcolor
-		new_gct.append(min_color)
 		color = min_color
+		perm.append(gct.index(color))
 		x_gct.remove(color)
-	return new_gct
-
+	return perm
 
 if __name__ == "__main__":
 	fname = '../gifs/Dancing.gif'

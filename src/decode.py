@@ -5,6 +5,7 @@ import os
 
 from blossom import blossom_perfect_matching
 from stega import *
+from main import greedy_tsp_3d
 
 def lzw_compress(min_code_size, index_stream):
 	"""
@@ -174,6 +175,16 @@ def discard_extension(gif):
 	else:
 		print('could not identify extension')
 
+def apply_permutation(perm, color_table, index_stream):
+	new_color_table = []
+	inv_perm = list.copy(perm)
+	for i, x in enumerate(perm):
+		new_color_table.append(color_table[x])
+		inv_perm[x] = i
+
+	new_index_stream = [inv_perm[x] for x in index_stream]
+	return new_color_table, new_index_stream
+
 
 
 if __name__ == "__main__":
@@ -219,23 +230,17 @@ if __name__ == "__main__":
 				packed_byte = gif.read(1)
 				print(packed_byte)
 				keys = code_stream_from_bytes(gif)
-				break
 			if b == bytes.fromhex('3B'):
 				print('reached end of file')
+				break
 
 
 
 	index_stream = lzw_decompress(keys)
 
-	reordering = blossom_perfect_matching(global_color_table)
+	reordering = list(np.random.permutation(global_color_table_size))
 
-	new_color_table = []
-	inverse_reordering = list.copy(reordering)
-	for i, x in enumerate(reordering):
-		new_color_table.append(global_color_table[x])
-		inverse_reordering[x] = i
-
-	new_index_stream = [inverse_reordering[x] for x in index_stream]
+	new_color_table, new_index_stream = apply_permutation(reordering, global_color_table, index_stream)
 
 	available = len(new_index_stream)//8
 	print('number of free bytes available: {}'.format(available))
@@ -250,10 +255,6 @@ if __name__ == "__main__":
 	if data == random_bytes:
 		print('data are equal')
 
-
-	mygif1 = []
-	for i in new_index_stream:
-		mygif1 += list(new_color_table[i])
 
 	mygif2 = []
 	for i in stega_index_stream:

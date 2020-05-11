@@ -2,4 +2,4 @@
 .DS_Store
 blossom5
 main
-src/__pycache__
+src/__pycache__/
