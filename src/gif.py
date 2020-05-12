@@ -1,6 +1,7 @@
 import unittest
-
-from decode import *
+import matplotlib.pyplot as plt
+import numpy as np
+import itertools
 
 
 class BadFileError(Exception):
@@ -15,7 +16,6 @@ def discard_sub_blocks(binary_stream):
 		binary_stream.seek(block_size, 1)
 		block_size = int.from_bytes(binary_stream.read(1), byteorder='big')
 	return binary_stream.seek(0, 1)
-
 
 
 class GifComponent:
@@ -46,18 +46,93 @@ class Extension(GifComponent):
 class Frame(GifComponent):
 
 
+	def available_bytes(self):
+		return len(self.index_stream)//8
+
 	def __str__(self):
 		return 'Frame'
 
 	def __init__(self, binary_stream):
 		super().__init__('Frame')
-		b = binary_stream.read(8)
+		b = binary_stream.read(9)
 		self.frame_left = int.from_bytes(b[:2], byteorder='little')
 		self.frame_top = int.from_bytes(b[2:4], byteorder='little')
 		self.frame_width = int.from_bytes(b[4:6], byteorder='little')
-		self.frame_height = int.from_bytes(b[6:], byteorder='little')
-		self.packed_byte = binary_stream.read(1)
-		self.index_stream = lzw_decompress(code_stream_from_bytes(binary_stream))
+		self.frame_height = int.from_bytes(b[6:8], byteorder='little')
+		self.local_color_table_flag = b[8] & 128
+		self.interlace_flag = b[8] & 64
+		self.sort_flag = b[8] & 32
+		self.local_color_table_size = (b[8] & 7) + 1
+		if self.local_color_table_flag:
+			self._local_color_table(gifFile)
+		self._image_data(binary_stream)
+
+	def _local_color_table(self, gifFile):
+		self.local_color_table = []
+		for i in range(0, self.local_color_table_size):
+			self.local_color_table.append(tuple(gifFile.read(3)))
+
+	def _image_data(self, gifFile):
+		self.index_stream = []
+		code_size = int.from_bytes(gifFile.read(1), byteorder='big')
+		clear = 1 << code_size
+		stop = clear + 1
+		code_size += 1
+		init_code_size = code_size
+		self.byte = self.sub_len = self.shift = 0
+
+		prevCode = self._get_code(gifFile, code_size)
+		if prevCode != clear:
+			raise BadFileError('Image data does not begin with clear code')
+
+		code_table = [(i,) for i in range(stop + 1)]
+		prevCode = clear
+		while 1:
+			code = self._get_code(gifFile, code_size)
+			if code == clear:
+				code_table = [(i,) for i in range(stop + 1)]
+				code_size = init_code_size
+				prevCode = code
+				continue
+			elif code == stop:
+				break
+			elif code < len(code_table):
+				index_list = code_table[code]
+				for i in index_list:
+					self.index_stream.append(i)
+				k = index_list[0]
+			else:
+				index_list = code_table[prevCode]
+				k = index_list[0]
+				for i in index_list:
+					self.index_stream.append(i)
+				self.index_stream.append(k)
+			if prevCode != clear:
+				code_table.append(code_table[prevCode] + (k,))
+			if len(code_table) == (1 << code_size) and code_size < 12:
+				code_size += 1
+			prevCode = code
+
+		# Should be one more zero byte
+		gifFile.read(1)
+
+
+	def _get_code(self, gifFile, code_size):
+		code = bits_read = 0
+		while bits_read < code_size:
+			rpad = (self.shift + bits_read) % 8
+			if rpad == 0:
+				# Update byte
+				if self.sub_len == 0:
+					self.sub_len = int.from_bytes(gifFile.read(1), byteorder='big')
+				self.byte = int.from_bytes(gifFile.read(1), byteorder='big')
+				self.sub_len -= 1
+			frag_size = min(code_size - bits_read, 8 - rpad)
+			code = code | ((self.byte >> rpad) << bits_read)
+			bits_read += frag_size
+		code = code & ((1 << code_size) - 1)
+		self.shift = (self.shift + code_size) % 8
+		return code
 
 
 class Gif:
@@ -66,6 +141,9 @@ class Gif:
 	extension_introducer = bytes.fromhex('21')
 	image_separator = bytes.fromhex('2C')
 	trailer = bytes.fromhex('3B')
+
+	def available_bytes(self):
+		return sum(len(f.index_stream) for f in self.get_frames())//8
 
 	def __str__(self):
 		return '\n'.join(str(p) for p in self.components)
@@ -95,6 +173,13 @@ class Gif:
 	def get_frames(self):
 		return [c for c in self.components if c.type == 'Frame']
 
+	def get_images(self):
+		imgs = []
+		for f in self.get_frames():
+			color_table = f.local_color_table if f.local_color_table_flag else self.global_color_table
+			imgs.append(np.asarray(list(itertools.chain.from_iterable(color_table[i] for i in f.index_stream))).reshape(f.frame_height, f.frame_width, 3))
+		return imgs
+
 	def _header(self, gifFile):
 		if gifFile.read(6) != Gif.header:
 			raise BadFileError('Invalid header')
@@ -119,6 +204,7 @@ class Gif:
 		for i in range(0, self.global_color_table_size*3, 3):
 			self.global_color_table.append(tuple(b[i:i+3]))
 
+
 	def write_to_file(self, fname):
 		pass
 
@@ -131,6 +217,9 @@ class TestGif(unittest.TestCase):
 if __name__ == "__main__" :
 
 	mygif = Gif()
-	mygif.read_from_file('../gifs/Dancing.gif')
+	mygif.read_from_file('../gifs/sample_2_animation.gif')
 
-	print(mygif)
+	imgs = mygif.get_images();
+
+	plt.imshow(imgs[0])
+	plt.show()

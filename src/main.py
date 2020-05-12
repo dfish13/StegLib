@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
+import os
 import numpy as np
 
 from blossom import blossom_perfect_matching, color_distance
+from gif import Gif
+from stega import *
 
 def greedy_tsp_3d(gct):
 	x_gct = gct.copy()
@@ -21,43 +24,31 @@ def greedy_tsp_3d(gct):
 		x_gct.remove(color)
 	return perm
 
+def apply_permutation(perm, color_table, index_stream):
+	new_color_table = []
+	inv_perm = list.copy(perm)
+	for i, x in enumerate(perm):
+		new_color_table.append(color_table[x])
+		inv_perm[x] = i
+
+	new_index_stream = [inv_perm[x] for x in index_stream]
+	return new_color_table, new_index_stream
+
 if __name__ == "__main__":
 	fname = '../gifs/Dancing.gif'
 
-	with open(fname, 'rb') as gif:
-		b = gif.read(6)
-		print('header = {}'.format(b.decode('utf-8')))
-		b = gif.read(7)
-		canvas_width = int.from_bytes(b[:2], byteorder='little')
-		canvas_height = int.from_bytes(b[2:4], byteorder='little')
-		global_color_table_flag = (b[4] & 128) >> 7
-		color_resolution = (b[4] & 112) >> 4
-		sort_flag = (b[4] & 8) >> 3
-		global_color_table_size = 2**((b[4] & 7)+1)
+	mygif = Gif()
+	mygif.read_from_file(fname)
+	frame = mygif.get_frames()[0]
 
 
-		print('width = {}, height = {}'.format(canvas_width, canvas_height))
-		print('global color table flag = {}'.format(global_color_table_flag))
-		print('color resolution = {}'.format(color_resolution))
-		print('sort flag = {}'.format(sort_flag))
-		print('size of global color table = {}'.format(global_color_table_size))
+	blossom_perm = blossom_perfect_matching(mygif.global_color_table)
 
-		global_color_table = []
-		if global_color_table_flag:
-			for i in range(global_color_table_size):
-				b = gif.read(3)
-				global_color_table.append(tuple(b))
+	mygif.global_color_table, frame.index_stream = apply_permutation(blossom_perm, mygif.global_color_table, frame.index_stream)
 
-	# display color table
-	cell_width, cell_height = (5, 100)
+	available = frame.available_bytes()
 
-	perfect_matching_gct = blossom_perfect_matching(global_color_table)
+	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack(os.urandom(available-4)), 1)
 
-	colors_img = []
-
-	for i in range(5):
-		for c in perfect_matching_gct:
-			colors_img += list(c)
-
-	plt.imshow(np.asarray(colors_img).reshape(5, len(perfect_matching_gct), 3))
+	plt.imshow(mygif.get_images()[0])
 	plt.show()

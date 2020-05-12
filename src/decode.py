@@ -1,12 +1,4 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import io
-import os
-
-from blossom import blossom_perfect_matching
-from stega import *
-from main import greedy_tsp_3d
-import gif
+from gif import Gif
 
 def lzw_compress(min_code_size, index_stream):
 	"""
@@ -100,104 +92,13 @@ def lzw_decompress(code_stream):
 		prevCode = code
 	return index_stream
 
-def code_stream_to_bytes(min_code_size, code_stream):
-	pass
-
-
-def code_stream_from_bytes(gif):
-	keys = []
-	key_size = int.from_bytes(gif.read(1), byteorder='big')
-	clear = 1 << key_size
-	stop = clear + 1
-	key_size += 1
-	init_key_size = key_size
-	sub_len = shift = 0
-
-	(key, sub_len, shift, byte) = get_key(gif, key_size, sub_len, shift, 0)
-	keys.append(key)
-
-	next_code = stop
-	while 1:
-		if key == clear:
-			key_size = init_key_size
-			next_code = stop
-		(key, sub_len, shift, byte) = get_key(gif, key_size, sub_len, shift, byte)
-		keys.append(key)
-		if key == clear:
-			continue
-		if key == stop:
-			break
-		if next_code == (1 << key_size) - 1 and key_size < 12:
-			key_size += 1
-		next_code += 1
-	gif.read(1)
-	return keys
-
-
-def get_key(gif, key_size, sub_len, shift, byte):
-	key = bits_read = 0
-	while bits_read < key_size:
-		rpad = (shift + bits_read) % 8
-		if rpad == 0:
-			# Update byte
-			if sub_len == 0:
-				sub_len = int.from_bytes(gif.read(1), byteorder='big')
-			byte = int.from_bytes(gif.read(1), byteorder='big')
-			sub_len -= 1
-		frag_size = min(key_size - bits_read, 8 - rpad)
-		key = key | ((byte >> rpad) << bits_read)
-		bits_read += frag_size
-	key = key & ((1 << key_size) - 1)
-	shift = (shift + key_size) % 8
-	return (key, sub_len, shift, byte)
-
-
-def apply_permutation(perm, color_table, index_stream):
-	new_color_table = []
-	inv_perm = list.copy(perm)
-	for i, x in enumerate(perm):
-		new_color_table.append(color_table[x])
-		inv_perm[x] = i
-
-	new_index_stream = [inv_perm[x] for x in index_stream]
-	return new_color_table, new_index_stream
-
-
 
 if __name__ == "__main__":
 
-	fname = '../gifs/Dancing.gif'
+	fname = '../gifs/sample_2_animation.gif'
 
-	mygif = gif.Gif()
+	mygif = Gif()
 	mygif.read_from_file(fname)
 
-
-
-	frame = mygif.get_frames()[0]
-	index_stream = frame.index_stream
-
-	reordering = list(np.random.permutation(mygif.global_color_table_size))
-
-	new_color_table, new_index_stream = apply_permutation(reordering, mygif.global_color_table, index_stream)
-
-	available = len(new_index_stream)//8
-	print('number of free bytes available: {}'.format(available))
-
-	random_bytes = os.urandom(available-4)
-	packed_data = pack(random_bytes)
-
-	stega_index_stream = inject_bytes(bytes(new_index_stream), packed_data, n=1)
-
-	size, data = unpack(stega_index_stream, n=1)
-
-	if data == random_bytes:
-		print('data are equal')
-
-
-	mygif2 = []
-	for i in stega_index_stream:
-		mygif2 += list(new_color_table[i])
-
-
-	plt.imshow(np.asarray(mygif2).reshape(frame.frame_height, frame.frame_width, 3))
-	plt.show()
+	print('available bytes in first frame = {}'.format(mygif.get_frames()[0].available_bytes()))
+	print('total available bytes = {}'.format(mygif.available_bytes()))
