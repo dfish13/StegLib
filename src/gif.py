@@ -2,6 +2,7 @@ import unittest
 import matplotlib.pyplot as plt
 import numpy as np
 import itertools
+import io
 
 
 class BadFileError(Exception):
@@ -43,11 +44,23 @@ class Extension(GifComponent):
 		binary_stream.seek(start)
 		self.sub_blocks = binary_stream.read(end-start)
 
+	def write_to_stream(self, binary_stream):
+		binary_stream.write(self.label)
+		binary_stream.write(self.sub_blocks)
+
+
 class Frame(GifComponent):
 
 
 	def available_bytes(self):
 		return len(self.index_stream)//8
+
+	def write_to_stream(self, binary_stream):
+		binary_stream.write(self.image_descriptor)
+		if self.local_color_table_flag:
+			binary_stream.write(bytes(itertools.chain.from_iterable(self.local_color_table)))
+		binary_stream.write(self.code_size)
+		binary_stream.write(self._compress_index_stream())
 
 	def __str__(self):
 		return 'Frame'
@@ -55,6 +68,7 @@ class Frame(GifComponent):
 	def __init__(self, binary_stream):
 		super().__init__('Frame')
 		b = binary_stream.read(9)
+		self.image_descriptor = b
 		self.frame_left = int.from_bytes(b[:2], byteorder='little')
 		self.frame_top = int.from_bytes(b[2:4], byteorder='little')
 		self.frame_width = int.from_bytes(b[4:6], byteorder='little')
@@ -72,16 +86,106 @@ class Frame(GifComponent):
 		for i in range(0, self.local_color_table_size):
 			self.local_color_table.append(tuple(gifFile.read(3)))
 
+	def _code_stream(self):
+		"""
+		code stream generator (does not return a list)
+		"""
+		code_table = dict()
+		clear = 1 << self.code_size[0]
+		stop = clear + 1
+		next_code = stop + 1
+
+		for i in range(clear):
+			code_table[(i,)] = i
+
+		index_buffer = (self.index_stream[0],)
+
+		yield clear
+
+		for i in self.index_stream[1:]:
+			if (code_table.get(index_buffer + (i,), -1) != -1):
+				index_buffer += (i,)
+			else:
+				code_table[index_buffer + (i,)] = next_code
+				yield code_table[index_buffer]
+				if next_code == 2**12:
+					yield clear
+					code_table.clear()
+					for j in range(clear):
+						code_table[(j,)] = j
+					next_code = stop + 1
+				else:
+					next_code += 1
+
+				index_buffer = (i,)
+
+		yield code_table[index_buffer]
+		yield stop
+
+	def _compress_index_stream(self):
+		code_size = self.code_size[0]
+		clear = 1 << code_size
+		stop = clear + 1
+		code_size += 1
+		init_code_size = code_size
+		num_codes = stop + 1
+
+		stream_gen = self._code_stream()
+		ba = bytearray()
+		sub_block = bytearray()
+		b = next(stream_gen).to_bytes(2, byteorder='big')
+		if code_size > 8:
+			sub_block.append(b[1])
+			byte = b[0]
+		else:
+			byte = b[1]
+		shift = code_size
+		for c in stream_gen:
+			bits_written = 0
+			while bits_written < code_size:
+				rpad = (shift + bits_written) % 8
+				if rpad == 0:
+					byte &= (1 << 8) - 1
+					sub_block.append(byte)
+					if len(sub_block) == 254:
+						ba += bytearray([254]) + sub_block
+						sub_block = bytearray()
+					byte = 0
+				byte |= ((c >> bits_written) << rpad)
+				frag_size = min(8 - rpad, code_size - bits_written)
+				#print('rpad = {}, frag_size = {}, code_size = {}'.format(rpad, frag_size, code_size))
+				bits_written += frag_size
+			shift = (shift + code_size) % 8
+			if num_codes == (1 << code_size) and code_size < 12:
+				code_size += 1
+			if c == clear:
+				code_size = init_code_size
+				num_codes = stop
+			num_codes += 1
+
+		if shift != 0:
+			sub_block.append(byte)
+		if len(sub_block) > 0:
+			ba += bytearray([len(sub_block)]) + sub_block
+		ba.append(0)
+
+		return bytes(ba)
+
 	def _image_data(self, gifFile):
 		self.index_stream = []
-		code_size = int.from_bytes(gifFile.read(1), byteorder='big')
+		self.code_size = gifFile.read(1)
+		start = gifFile.seek(0, 1)
+		code_size = int.from_bytes(self.code_size, byteorder='big')
 		clear = 1 << code_size
 		stop = clear + 1
 		code_size += 1
 		init_code_size = code_size
 		self.byte = self.sub_len = self.shift = 0
 
+		self.code_stream = []
+
 		prevCode = self._get_code(gifFile, code_size)
+		self.code_stream.append(prevCode)
 		if prevCode != clear:
 			raise BadFileError('Image data does not begin with clear code')
 
@@ -89,6 +193,7 @@ class Frame(GifComponent):
 		prevCode = clear
 		while 1:
 			code = self._get_code(gifFile, code_size)
+			self.code_stream.append(code)
 			if code == clear:
 				code_table = [(i,) for i in range(stop + 1)]
 				code_size = init_code_size
@@ -115,6 +220,9 @@ class Frame(GifComponent):
 
 		# Should be one more zero byte
 		gifFile.read(1)
+		end = gifFile.seek(0, 1)
+		gifFile.seek(start)
+		self.compressed_index_stream = gifFile.read(end-start)
 
 
 	def _get_code(self, gifFile, code_size):
@@ -170,6 +278,19 @@ class Gif:
 				else:
 					raise BadFileError('Unrecognized byte')
 
+	def write_to_file(self, fname):
+		with open(fname, 'wb') as gifFile:
+			gifFile.write(Gif.header)
+			gifFile.write(self.logical_screen_descriptor)
+			gifFile.write(bytes(itertools.chain.from_iterable(self.global_color_table)))
+			for c in self.components:
+				if c.type == 'Extension':
+					gifFile.write(Gif.extension_introducer)
+				elif c.type == 'Frame':
+					gifFile.write(Gif.image_separator)
+				c.write_to_stream(gifFile)
+			gifFile.write(Gif.trailer)
+
 	def get_frames(self):
 		return [c for c in self.components if c.type == 'Frame']
 
@@ -186,6 +307,7 @@ class Gif:
 
 	def _logical_screen_descriptor(self, gifFile):
 		b = gifFile.read(7)
+		self.logical_screen_descriptor = b
 		self.canvas_width = int.from_bytes(b[:2], byteorder='little')
 		self.canvas_height = int.from_bytes(b[2:4], byteorder='little')
 		self.global_color_table_flag = (b[4] & 128)
@@ -205,21 +327,37 @@ class Gif:
 			self.global_color_table.append(tuple(b[i:i+3]))
 
 
-	def write_to_file(self, fname):
-		pass
-
-
 class TestGif(unittest.TestCase):
-	pass
+
+	fnames = ['../gifs/sample_1.gif',
+	 			'../gifs/sample_2_animation.gif',
+				'../gifs/Dancing.gif']
+
+	#@unittest.skip('skip')
+	def test_compress_index_stream(self):
+		self.maxDiff = None
+		for fname in self.fnames:
+			mygif = Gif()
+			mygif.read_from_file(fname)
+			frame = mygif.get_frames()[0]
+			self.assertEqual(frame.compressed_index_stream, frame._compress_index_stream())
+
+	def test_code_stream(self):
+		self.maxDiff = None
+		for fname in self.fnames:
+			mygif = Gif()
+			mygif.read_from_file(fname)
+			frame = mygif.get_frames()[0]
+			self.assertListEqual(frame.code_stream[:4000], list(frame._code_stream())[:4000])
 
 
 
 if __name__ == "__main__" :
 
+
+	#unittest.main()
+
 	mygif = Gif()
-	mygif.read_from_file('../gifs/sample_2_animation.gif')
+	mygif.read_from_file('../gifs/Dancing.gif')
 
-	imgs = mygif.get_images();
-
-	plt.imshow(imgs[0])
-	plt.show()
+	mygif.write_to_file('test.gif')

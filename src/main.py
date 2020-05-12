@@ -46,9 +46,9 @@ if __name__ == "__main__":
 
 	mygif.global_color_table, frame.index_stream = apply_permutation(blossom_perm, mygif.global_color_table, frame.index_stream)
 
-	available = frame.available_bytes()
+	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack('Duncanwashere'.encode('utf-8')), 1)
 
-	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack(os.urandom(available-4)), 1)
+	mygif.write_to_file('../gifs/demo.gif')
 
 	plt.imshow(mygif.get_images()[0])
 	plt.show()
