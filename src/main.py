@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import os
 import numpy as np
+import io
 
 from blossom import blossom_perfect_matching, color_distance
 from gif import Gif
@@ -35,20 +36,33 @@ def apply_permutation(perm, color_table, index_stream):
 	return new_color_table, new_index_stream
 
 if __name__ == "__main__":
-	fname = '../gifs/Dancing.gif'
 
-	mygif = Gif()
-	mygif.read_from_file(fname)
-	frame = mygif.get_frames()[0]
+	inner = '../gifs/sample_2_animation.gif'
+	outer = '../gifs/Dancing.gif'
 
-
-	blossom_perm = blossom_perfect_matching(mygif.global_color_table)
-
-	mygif.global_color_table, frame.index_stream = apply_permutation(blossom_perm, mygif.global_color_table, frame.index_stream)
-
+	inner_gif = Gif()
+	inner_gif.read_from_file(inner)
+	frame = inner_gif.get_frames()[0]
 	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack('Duncanwashere'.encode('utf-8')), 1)
 
-	mygif.write_to_file('../gifs/demo.gif')
+	binary_stream = io.BytesIO()
+	inner_gif.write_to_stream(binary_stream)
 
-	plt.imshow(mygif.get_images()[0])
+	binary_stream.seek(0)
+
+	outer_gif = Gif()
+	outer_gif.read_from_file(outer)
+	frame = outer_gif.get_frames()[0]
+	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack(binary_stream.read()), 1)
+
+
+
+
+	blossom_perm = blossom_perfect_matching(outer_gif.global_color_table)
+
+	outer_gif.global_color_table, frame.index_stream = apply_permutation(blossom_perm, outer_gif.global_color_table, frame.index_stream)
+
+	outer_gif.write_to_file('../gifs/gifsallthewaydown.gif')
+
+	plt.imshow(outer_gif.get_images()[0])
 	plt.show()

@@ -263,33 +263,39 @@ class Gif:
 
 	def read_from_file(self, fname):
 		with open(fname, 'rb') as gifFile:
-			self._header(gifFile)
-			self._logical_screen_descriptor(gifFile)
-			self._global_color_table(gifFile)
+			self.read_from_stream(gifFile)
 
-			while 1:
-				b = gifFile.read(1)
-				if b == Gif.extension_introducer:
-					self.components.append(Extension(gifFile))
-				elif b == Gif.image_separator:
-					self.components.append(Frame(gifFile))
-				elif b == Gif.trailer:
-					break
-				else:
-					raise BadFileError('Unrecognized byte')
+	def read_from_stream(self, binary_stream):
+		self._header(binary_stream)
+		self._logical_screen_descriptor(binary_stream)
+		self._global_color_table(binary_stream)
+
+		while 1:
+			b = binary_stream.read(1)
+			if b == Gif.extension_introducer:
+				self.components.append(Extension(binary_stream))
+			elif b == Gif.image_separator:
+				self.components.append(Frame(binary_stream))
+			elif b == Gif.trailer:
+				break
+			else:
+				raise BadFileError('Unrecognized byte')
 
 	def write_to_file(self, fname):
 		with open(fname, 'wb') as gifFile:
-			gifFile.write(Gif.header)
-			gifFile.write(self.logical_screen_descriptor)
-			gifFile.write(bytes(itertools.chain.from_iterable(self.global_color_table)))
-			for c in self.components:
-				if c.type == 'Extension':
-					gifFile.write(Gif.extension_introducer)
-				elif c.type == 'Frame':
-					gifFile.write(Gif.image_separator)
-				c.write_to_stream(gifFile)
-			gifFile.write(Gif.trailer)
+			self.write_to_stream(gifFile)
+
+	def write_to_stream(self, binary_stream):
+		binary_stream.write(Gif.header)
+		binary_stream.write(self.logical_screen_descriptor)
+		binary_stream.write(bytes(itertools.chain.from_iterable(self.global_color_table)))
+		for c in self.components:
+			if c.type == 'Extension':
+				binary_stream.write(Gif.extension_introducer)
+			elif c.type == 'Frame':
+				binary_stream.write(Gif.image_separator)
+			c.write_to_stream(binary_stream)
+		binary_stream.write(Gif.trailer)
 
 	def get_frames(self):
 		return [c for c in self.components if c.type == 'Frame']
