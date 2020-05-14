@@ -339,7 +339,6 @@ class TestGif(unittest.TestCase):
 	 			'../gifs/sample_2_animation.gif',
 				'../gifs/Dancing.gif']
 
-	#@unittest.skip('skip')
 	def test_compress_index_stream(self):
 		self.maxDiff = None
 		for fname in self.fnames:
@@ -361,9 +360,4 @@ class TestGif(unittest.TestCase):
 if __name__ == "__main__" :
 
 
-	#unittest.main()
-
-	mygif = Gif()
-	mygif.read_from_file('../gifs/Dancing.gif')
-
-	mygif.write_to_file('test.gif')
+	unittest.main()

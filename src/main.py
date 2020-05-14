@@ -53,14 +53,9 @@ if __name__ == "__main__":
 	outer_gif = Gif()
 	outer_gif.read_from_file(outer)
 	frame = outer_gif.get_frames()[0]
-	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack(binary_stream.read()), 1)
-
-
-
-
 	blossom_perm = blossom_perfect_matching(outer_gif.global_color_table)
-
 	outer_gif.global_color_table, frame.index_stream = apply_permutation(blossom_perm, outer_gif.global_color_table, frame.index_stream)
+	frame.index_stream = inject_bytes(bytes(frame.index_stream), pack(binary_stream.read()), 1)
 
 	outer_gif.write_to_file('../gifs/gifsallthewaydown.gif')
 
