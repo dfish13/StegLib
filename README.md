@@ -13,7 +13,7 @@ The original Stegasaurus was a semester long group project for an undergraduate 
 
 At the moment I have 2 main features and of course some smaller tools that I built to help me implement those features.
 
-1. Using LSB substitution to hide data in PNG images.
+1. Using Least Significant Bit (LSB) substitution to hide data in PNG images.
 2. Hiding data in GIF images with a slightly more convoluted method that ultimately uses LSB substitution.
   - Had to build a simple GIF decoder/encoder to manipulate the image data at a low level.
   - Hacked together a way to interface with a C++ implementation of the Blossom V algorithm.
