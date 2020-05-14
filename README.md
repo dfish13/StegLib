@@ -26,3 +26,8 @@ At the moment I have 2 main features and of course some smaller tools that I bui
 One thing common to all of these methods is that there is some form of header at the beginning of the data that you are extracting from a cover. At the moment I just use a 4 byte header and convert it into an integer which represents the amount of data that follows. It says nothing about the type of data, whether it is a binary file, utf-8 encoded text, zip file, etc. I am thinking about adding a component to the header that indicates what type of data follows so that the responsibility of knowing what form of data is stored is moved into the library and off of the user. This would come at the cost of taking away some potential storage space for hidden data and also would require me to come up with some arbitrary standard. However, this is probably a good idea and should be added.
 
 I am hoping to add JPEG steganography and some audio file steganography. Both of these are going to require some more research before I can move into implementation.
+
+
+### Developers
+- Duncan Fisher
+- Leah Rumancik
