@@ -1,8 +1,5 @@
 import subprocess
-
-
-def color_distance(c1, c2):
-    return sum((x-y)**2 for x, y in zip(c1, c2))
+from util import color_distance
 
 def blossom_perfect_matching(color_table):
     """

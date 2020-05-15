@@ -8,6 +8,6 @@ if __name__ == "__main__":
     mygif = Gif()
     mygif.read_from_file(fname)
 
-    size, data = unpack(bytes(mygif.get_frames()[0].index_stream), 1)
+    data = gif_extract(mygif)
 
     print(data.decode('utf-8'))
