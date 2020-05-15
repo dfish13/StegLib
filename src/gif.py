@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import itertools
 import io
+import os
 
 
 class BadFileError(Exception):
@@ -251,7 +252,7 @@ class Gif:
 	trailer = bytes.fromhex('3B')
 
 	def available_bytes(self):
-		return sum(len(f.index_stream) for f in self.get_frames())//8
+		return sum(f.available_bytes() for f in self.get_frames() if not f.local_color_table_flag)
 
 	def __str__(self):
 		return '\n'.join(str(p) for p in self.components)
@@ -307,6 +308,27 @@ class Gif:
 			imgs.append(np.asarray(list(itertools.chain.from_iterable(color_table[i] for i in f.index_stream))).reshape(f.frame_height, f.frame_width, 3))
 		return imgs
 
+	def reorder_color_table(self, reorder_func):
+		"""
+		reorder_func is a function mapping a color table to a permutation of
+		the indices of that color table.
+
+		This function only remaps the frames which rely on the global color table
+		for their color mapping. The resulting gif should be equivalent i.e.
+		should not be rendered differently than before the function was called.
+		"""
+		perm = reorder_func(self.global_color_table)
+		new_color_table = []
+		inv_perm = perm.copy()
+		for i, x in enumerate(perm):
+			new_color_table.append(self.global_color_table[x])
+			inv_perm[x] = i
+		self.global_color_table = new_color_table
+		for f in self.get_frames():
+			if not f.local_color_table_flag:
+				f.index_stream = [inv_perm[i] for i in f.index_stream]
+
+
 	def _header(self, gifFile):
 		if gifFile.read(6) != Gif.header:
 			raise BadFileError('Invalid header')
@@ -340,7 +362,6 @@ class TestGif(unittest.TestCase):
 				'../gifs/Dancing.gif']
 
 	def test_compress_index_stream(self):
-		self.maxDiff = None
 		for fname in self.fnames:
 			mygif = Gif()
 			mygif.read_from_file(fname)
@@ -348,12 +369,11 @@ class TestGif(unittest.TestCase):
 			self.assertEqual(frame.compressed_index_stream, frame._compress_index_stream())
 
 	def test_code_stream(self):
-		self.maxDiff = None
 		for fname in self.fnames:
 			mygif = Gif()
 			mygif.read_from_file(fname)
 			frame = mygif.get_frames()[0]
-			self.assertListEqual(frame.code_stream[:4000], list(frame._code_stream())[:4000])
+			self.assertListEqual(frame.code_stream, list(frame._code_stream()))
 
 
 
