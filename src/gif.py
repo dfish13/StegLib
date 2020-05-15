@@ -13,11 +13,43 @@ class BadFileError(Exception):
 
 
 def discard_sub_blocks(binary_stream):
+	"""
+	returns the file offset immediately following this sequence of sub blocks.
+	"""
 	block_size = int.from_bytes(binary_stream.read(1), byteorder='big')
 	while block_size > 0:
 		binary_stream.seek(block_size, 1)
 		block_size = int.from_bytes(binary_stream.read(1), byteorder='big')
 	return binary_stream.seek(0, 1)
+
+def decode_sub_blocks(bs):
+	"""
+	bs is a bytes object which contains of sequence of sub blocks.
+	Returns a byte array which is just the concatenation of all the sub blocks
+	without the sub block length bytes.
+	"""
+	ba = bytearray()
+	i = 0
+	while bs[i] != 0:
+		nextI = i + bs[i] + 1
+		ba += bytearray(bs[i+1:nextI])
+		i = nextI
+	return ba
+
+def encode_sub_blocks(bs):
+	"""
+	Encodes a bytes object as a sequence of sub blocks.
+	"""
+	ba = bytearray()
+	i = 0
+	while i < len(bs):
+		sub_block_len = min(255, len(bs) - i)
+		ba.append(sub_block_len)
+		ba += bytearray(bs[i:i+sub_block_len])
+		i += sub_block_len
+	ba.append(0)
+	return bytes(ba)
+
 
 
 class GifComponent:
@@ -154,7 +186,6 @@ class Frame(GifComponent):
 					byte = 0
 				byte |= ((c >> bits_written) << rpad)
 				frag_size = min(8 - rpad, code_size - bits_written)
-				#print('rpad = {}, frag_size = {}, code_size = {}'.format(rpad, frag_size, code_size))
 				bits_written += frag_size
 			shift = (shift + code_size) % 8
 			if num_codes == (1 << code_size) and code_size < 12:
@@ -361,6 +392,8 @@ class TestGif(unittest.TestCase):
 	 			'../gifs/sample_2_animation.gif',
 				'../gifs/Dancing.gif']
 
+	short = 'Duncanwashere'.encode('utf-8')
+
 	def test_compress_index_stream(self):
 		for fname in self.fnames:
 			mygif = Gif()
@@ -375,6 +408,18 @@ class TestGif(unittest.TestCase):
 			frame = mygif.get_frames()[0]
 			self.assertListEqual(frame.code_stream, list(frame._code_stream()))
 
+	def test_encode_sub_blocks(self):
+		ba = bytearray()
+		ba.append(len(self.short))
+		ba += bytearray(self.short)
+		ba.append(0)
+		short_sub_blocks = bytes(ba)
+		self.assertEqual(short_sub_blocks, encode_sub_blocks(self.short))
+
+	def test_encode_then_decode_sub_blocks(self):
+		shortList = [self.short*x for x in [1, 10, 100, 1000]]
+		for b in shortList:
+			self.assertEqual(b, decode_sub_blocks(encode_sub_blocks(b)))
 
 
 if __name__ == "__main__" :

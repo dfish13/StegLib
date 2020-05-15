@@ -163,7 +163,6 @@ def gif_extract(gif):
 	for f in gif.get_frames():
 		if not f.local_color_table_flag:
 			extra = len(f.index_stream) % 8
-			print(extra)
 			ba += bytearray(f.index_stream[:len(f.index_stream)-extra])
 
 	size, data = unpack(ba, 1)
